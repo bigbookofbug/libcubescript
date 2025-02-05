@@ -189,6 +189,31 @@ static void do_sigint(int n) {
     });
 }
 
+static bool do_cat_file(cs::state &cs, std::string_view fname,
+                        cs::any_value &ret) {
+  FILE *f = std::fopen(fname.data(), "rb");
+  char *str = NULL;
+  if (f) {
+    std::fseek(f, 0, SEEK_END);
+    long len = std::ftell(f);
+    std::fseek(f, 0, SEEK_SET);
+    str = static_cast<char*>(std::malloc(len));
+    memset(str, '\0', strlen(str));
+    if (str) {
+      std::fread(str, 1, len, f);
+      printf("%s", str);
+
+      ret = cs.compile(
+		       std::string_view{str, std::size_t(len)}, fname
+		       ).call(cs);
+      free(str);
+      return true;
+    }
+      return false;
+  }
+  return false;
+}
+
 static bool do_exec_file(
     cs::state &cs, std::string_view fname, cs::any_value &ret
 ) {
@@ -357,6 +382,18 @@ int main(int argc, char **argv) {
             args[1].get_string(css).data(),
             args[2].get_string(css).data()
         );
+    });
+
+    gcs.new_command("cat", "s", [](auto &css, auto args, auto &) {
+      auto file = args[0].get_string(css);
+      cs::any_value val{};
+      bool ret = do_cat_file(css, file, val);
+      if (!ret) {
+        char buf[4096];
+        std::snprintf(buf, sizeof(buf), "could not read file \"%s\"",
+                      file.data());
+	throw cs::error(css,buf);
+      }
     });
 
     gcs.new_command("exec", "s", [](auto &css, auto args, auto &) {
